@@ -25,7 +25,7 @@ int
 main(int argc, char **argv) {
     int opt;
 
-    while ((opt = getopt(argc, argv, "h")) != 1) {
+    while ((opt = getopt(argc, argv, "h")) != -1) {
         switch (opt) {
             case 'h':
                 printf("usage: %s [-h]", argv[0]);
