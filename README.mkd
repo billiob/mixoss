@@ -1,0 +1,8 @@
+# mixoss
+
+## Introduction
+`mixoss` is a console-based OSS mixer.
+
+## License
+`mixoss` is available under a BSD license; see `LICENSE` for more
+informations.
