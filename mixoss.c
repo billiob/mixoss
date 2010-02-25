@@ -14,12 +14,42 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <soundcard.h>
+
+static const char *mixer = "/dev/mixer";
+static int mixer_fd;
+
+static int dump_mixer_info();
+
+static int
+dump_mixer_info() {
+    struct oss_mixerinfo info;
+
+    info.dev = -1;
+
+    if (ioctl(mixer_fd, SNDCTL_MIXERINFO, &info) == -1) {
+        perror("cannot get mixer info");
+        return -1;
+    }
+
+    printf("id: %s\n", info.id);
+    printf("device: %s\n", info.name);
+    printf("number of mixer extensions: %d\n", info.nrext);
+
+    return 0;
+}
 
 int
 main(int argc, char **argv) {
@@ -37,5 +67,16 @@ main(int argc, char **argv) {
         }
     }
 
-    return 0;
+    if ((mixer_fd = open(mixer, O_RDWR)) < 0) {
+        perror("cannot open mixer");
+        exit(1);
+    }
+
+    if (dump_mixer_info() < 0) {
+        exit(1);
+    }
+
+    close(mixer_fd);
+
+    return EXIT_SUCCESS;
 }
