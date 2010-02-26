@@ -83,7 +83,7 @@ load_mixers() {
         for (int e = 0; e < mixer->info.nrext; e++) {
             struct control *ctrl = &mixers->controls[e];
 
-            ctrl->info.dev = 0;
+            ctrl->info.dev = m;
             ctrl->info.ctrl = e;
 
             errno = 0;
