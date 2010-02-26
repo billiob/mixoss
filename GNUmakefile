@@ -4,7 +4,7 @@ prefix=     /usr/local
 bindir=     $(prefix)/bin
 
 CFLAGS+= -std=c99 -D_POSIX_C_SOURCE=200112L
-CFLAGS+= -Wall -Wextra -Werror -Wsign-conversion -Wshadow -Wno-unused
+CFLAGS+= -Wall -Wextra -Werror -Wshadow -Wno-unused
 CFLAGS+= -g
 
 LDFLAGS= -g

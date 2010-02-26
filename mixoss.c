@@ -28,27 +28,87 @@
 
 #include <soundcard.h>
 
-static const char *mixer = "/dev/mixer";
-static int mixer_fd;
+struct control {
+    struct oss_mixext info;
+};
 
-static int dump_mixer_info();
-
-static int
-dump_mixer_info() {
+struct mixer {
     struct oss_mixerinfo info;
 
-    info.dev = -1;
+    struct control *controls;
+    int nb_controls;
+};
 
-    if (ioctl(mixer_fd, SNDCTL_MIXERINFO, &info) == -1) {
-        perror("cannot get mixer info");
+static const char *mixer_dev = "/dev/mixer";
+static int mixer_fd;
+
+static struct mixer *mixers;
+static int nb_mixers;
+
+static int load_mixers();
+static void free_mixers();
+
+static int
+load_mixers() {
+    if (ioctl(mixer_fd, SNDCTL_MIX_NRMIX, &nb_mixers) == -1) {
+        perror("cannot get number of mixers");
         return -1;
     }
 
-    printf("id: %s\n", info.id);
-    printf("device: %s\n", info.name);
-    printf("number of mixer extensions: %d\n", info.nrext);
+    mixers = calloc(nb_mixers, sizeof(struct mixer));
+    if (!mixers) {
+        perror("cannot allocate mixer structures");
+        return -1;
+    }
+
+    for (int m = 0; m < nb_mixers; m++) {
+        struct mixer *mixer = &mixers[m];
+
+        mixer->info.dev = m;
+
+        errno = 0;
+        if (ioctl(mixer_fd, SNDCTL_MIXERINFO, &mixer->info) == -1) {
+            perror("cannot get mixer info");
+            free_mixers();
+            return -1;
+        }
+
+        mixer->controls = calloc(mixer->info.nrext, sizeof(struct control));
+        if (!mixer->controls) {
+            perror("cannot allocate control structures");
+            free_mixers();
+            return -1;
+        }
+
+        for (int e = 0; e < mixer->info.nrext; e++) {
+            struct control *ctrl = &mixers->controls[e];
+
+            ctrl->info.dev = 0;
+            ctrl->info.ctrl = e;
+
+            errno = 0;
+            if (ioctl(mixer_fd, SNDCTL_MIX_EXTINFO, &ctrl->info) == -1) {
+                perror("cannot get mixer extension info");
+                free_mixers();
+                break;
+            }
+        }
+    }
 
     return 0;
+}
+
+static void
+free_mixers() {
+    if (nb_mixers == 0)
+        return;
+
+    for (int m = 0; m < nb_mixers; m++) {
+        struct mixer * mixer = &mixers[m];
+        free(mixer->controls);
+    }
+
+    free(mixers);
 }
 
 int
@@ -67,14 +127,15 @@ main(int argc, char **argv) {
         }
     }
 
-    if ((mixer_fd = open(mixer, O_RDWR)) < 0) {
+    if ((mixer_fd = open(mixer_dev, O_RDWR)) < 0) {
         perror("cannot open mixer");
         exit(1);
     }
 
-    if (dump_mixer_info() < 0) {
+    if (load_mixers() < 0)
         exit(1);
-    }
+
+    free_mixers();
 
     close(mixer_fd);
 
