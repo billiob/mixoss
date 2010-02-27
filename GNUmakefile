@@ -19,7 +19,7 @@ mixoss_BIN= $(subst .o,,$(mixoss_OBJ))
 
 $(mixoss_BIN): CFLAGS+=  -I$(OSSLIBDIR)/include/sys
 $(mixoss_BIN): LDFLAGS+=
-$(mixoss_BIN): LDLIBS+=
+$(mixoss_BIN): LDLIBS+=  -lcurses
 
 # Rules
 all: $(mixoss_BIN)

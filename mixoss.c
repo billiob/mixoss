@@ -26,6 +26,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <curses.h>
+
 #include <soundcard.h>
 
 struct control {
@@ -45,8 +47,14 @@ static int mixer_fd;
 static struct mixer *mixers;
 static int nb_mixers;
 
+static const char *title = "mixoss";
+
 static int load_mixers();
 static void free_mixers();
+
+static int init_ui();
+static void free_ui();
+static void draw_ui();
 
 static int
 load_mixers() {
@@ -111,8 +119,39 @@ free_mixers() {
     free(mixers);
 }
 
+static int
+init_ui() {
+    initscr();
+    keypad(stdscr, 1);
+    nonl();
+    cbreak();
+    noecho();
+
+    return 0;
+}
+
+static void
+free_ui() {
+    endwin();
+}
+
+static void
+draw_ui() {
+    int width, height;
+
+    width  = getmaxx(stdscr);
+    height = getmaxy(stdscr);
+
+    clear();
+
+    mvaddstr(0, (width - strlen(title)) / 2, title);
+
+    refresh();
+}
+
 int
 main(int argc, char **argv) {
+    int stop;
     int opt;
 
     while ((opt = getopt(argc, argv, "h")) != -1) {
@@ -135,9 +174,29 @@ main(int argc, char **argv) {
     if (load_mixers() < 0)
         exit(1);
 
-    free_mixers();
+    if (init_ui() < 0) {
+        free_mixers();
+        exit(1);
+    }
 
+    draw_ui();
+
+    stop = 0;
+    while (!stop) {
+        int c;
+
+        c = getch();
+
+        switch (c) {
+            case 'q':
+                stop = 1;
+                break;
+        }
+    }
+
+    free_ui();
+    free_mixers();
     close(mixer_fd);
 
-    return EXIT_SUCCESS;
+    return 0;
 }
