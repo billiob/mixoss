@@ -81,14 +81,15 @@ load_mixers() {
             return -1;
         }
 
-        mixer->controls = calloc(mixer->info.nrext, sizeof(struct control));
+        mixer->nb_controls = mixer->info.nrext;
+        mixer->controls = calloc(mixer->nb_controls, sizeof(struct control));
         if (!mixer->controls) {
             perror("cannot allocate control structures");
             free_mixers();
             return -1;
         }
 
-        for (int e = 0; e < mixer->info.nrext; e++) {
+        for (int e = 0; e < mixer->nb_controls; e++) {
             struct control *ctrl = &mixers->controls[e];
 
             ctrl->info.dev = m;
