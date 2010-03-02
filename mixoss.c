@@ -46,8 +46,11 @@ static int mixer_fd;
 
 static struct mixer *mixers;
 static int nb_mixers;
+static struct mixer *cur_mixer;
 
 static const char *title = "mixoss";
+static int label_padding = 12;
+static int gauge_width = 25;
 
 static int load_mixers();
 static void free_mixers();
@@ -139,13 +142,64 @@ free_ui() {
 static void
 draw_ui() {
     int width, height;
+    int py;
 
     width  = getmaxx(stdscr);
     height = getmaxy(stdscr);
 
     clear();
 
+    /* Title */
     mvaddstr(0, (width - strlen(title)) / 2, title);
+
+    /* Groups */
+    py = 3;
+    for (int c = 0; c < cur_mixer->nb_controls; c++) {
+        struct control *ctrl = &cur_mixer->controls[c];
+        struct oss_mixext *ext = &ctrl->info;
+        struct oss_mixer_value val;
+
+        if (ext->type == MIXT_STEREOSLIDER16) {
+            int min, max;
+            int vleft, vright, vpercent;
+            int nb_bars;
+            int px;
+
+            min = ctrl->info.minvalue;
+            max = ctrl->info.maxvalue;
+
+            val.dev = cur_mixer->info.dev;
+            val.ctrl = c;
+            val.timestamp = ctrl->info.timestamp;
+            val.value = -1;
+            if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
+                /* Add a proper way to report errors */
+                mvprintw(0, 0, "cannot read control: %s",
+                         strerror(errno));
+                continue;
+            }
+
+            vleft = val.value & 0xffff;
+            vright = (val.value >> 16) & 0xffff;
+            vpercent = min + (vleft * 100) / (max - min);
+
+            nb_bars = (vpercent * gauge_width) / 100;
+
+            mvprintw(py, 1, "%-*s", label_padding, ext->id);
+
+            px = 1 + label_padding + 1;
+            for (int g = 0; g < nb_bars; g++) {
+                mvaddch(py, px, '|');
+                px++;
+            }
+            px += gauge_width - nb_bars;
+
+            px++;
+            mvprintw(py, px, "%3d%%", vpercent);
+
+            py++;
+        }
+    }
 
     refresh();
 }
@@ -174,6 +228,7 @@ main(int argc, char **argv) {
 
     if (load_mixers() < 0)
         exit(1);
+    cur_mixer = &mixers[0];
 
     if (init_ui() < 0) {
         free_mixers();
