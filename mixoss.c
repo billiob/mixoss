@@ -192,14 +192,14 @@ draw_ui() {
 
             mvprintw(py, 1, "%-*s", label_padding, ext->id);
 
-            px = 1 + label_padding + 1;
+            px = 1 + label_padding + 2;
             for (int g = 0; g < nb_bars; g++) {
                 mvaddch(py, px, '|');
                 px++;
             }
             px += gauge_width - nb_bars;
 
-            px++;
+            px += 2;
             mvprintw(py, px, "%3d%%", vpercent);
 
             py++;
