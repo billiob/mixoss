@@ -149,17 +149,16 @@ draw_ui() {
 
     clear();
 
-    /* Title */
     mvaddstr(0, (width - strlen(title)) / 2, title);
 
-    /* Groups */
     py = 3;
     for (int c = 0; c < cur_mixer->nb_controls; c++) {
         struct control *ctrl = &cur_mixer->controls[c];
         struct oss_mixext *ext = &ctrl->info;
         struct oss_mixer_value val;
 
-        if (ext->type == MIXT_STEREOSLIDER16) {
+        if (ext->type == MIXT_STEREOSLIDER
+         || ext->type == MIXT_STEREOSLIDER16) {
             int min, max;
             int vleft, vright, vpercent;
             int nb_bars;
@@ -173,14 +172,20 @@ draw_ui() {
             val.timestamp = ctrl->info.timestamp;
             val.value = -1;
             if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
-                /* Add a proper way to report errors */
+                /* TODO Add a proper way to report errors */
                 mvprintw(0, 0, "cannot read control: %s",
                          strerror(errno));
                 continue;
             }
 
-            vleft = val.value & 0xffff;
-            vright = (val.value >> 16) & 0xffff;
+            if (ext->type == MIXT_STEREOSLIDER) {
+                vleft = val.value & 0xff;
+                vright = (val.value >> 8) & 0xffff;
+            } else if (ext->type == MIXT_STEREOSLIDER16) {
+                vleft = val.value & 0xffff;
+                vright = (val.value >> 16) & 0xffff;
+            }
+
             vpercent = min + (vleft * 100) / (max - min);
 
             nb_bars = (vpercent * gauge_width) / 100;
