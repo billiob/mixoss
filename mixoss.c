@@ -139,6 +139,62 @@ free_ui() {
     endwin();
 }
 
+static int
+draw_control(struct control *ctrl, int py, int px) {
+    struct oss_mixext *ext = &ctrl->info;
+    struct oss_mixer_value val;
+
+    if (ext->type == MIXT_STEREOSLIDER
+     || ext->type == MIXT_STEREOSLIDER16) {
+        int min, max;
+        int vleft, vright, vpercent;
+        int nb_bars;
+        int x;
+
+        min = ctrl->info.minvalue;
+        max = ctrl->info.maxvalue;
+
+        val.dev = cur_mixer->info.dev;
+        val.ctrl = ctrl->info.ctrl;
+        val.timestamp = ctrl->info.timestamp;
+        val.value = -1;
+        if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
+            /* TODO Add a proper way to report errors */
+            mvprintw(0, 0, "cannot read control: %s",
+                    strerror(errno));
+            return -1;
+        }
+
+        if (ext->type == MIXT_STEREOSLIDER) {
+            vleft = val.value & 0xff;
+            vright = (val.value >> 8) & 0xffff;
+        } else if (ext->type == MIXT_STEREOSLIDER16) {
+            vleft = val.value & 0xffff;
+            vright = (val.value >> 16) & 0xffff;
+        }
+
+        vpercent = min + (vleft * 100) / (max - min);
+        nb_bars = (vpercent * gauge_width) / 100;
+
+        x = px + 1;
+        mvprintw(py, 1, "%.*s", label_padding, ext->id);
+
+        x += label_padding + 2;
+        for (int g = 0; g < nb_bars; g++) {
+            mvaddch(py, x, '|');
+            x++;
+        }
+        x += gauge_width - nb_bars;
+
+        x += 2;
+        mvprintw(py, x, "%3d%%", vpercent);
+    } else {
+        return 0;
+    }
+
+    return 1;
+}
+
 static void
 draw_ui() {
     int width, height;
@@ -153,57 +209,11 @@ draw_ui() {
 
     py = 3;
     for (int c = 0; c < cur_mixer->nb_controls; c++) {
-        struct control *ctrl = &cur_mixer->controls[c];
-        struct oss_mixext *ext = &ctrl->info;
-        struct oss_mixer_value val;
+        int ret;
 
-        if (ext->type == MIXT_STEREOSLIDER
-         || ext->type == MIXT_STEREOSLIDER16) {
-            int min, max;
-            int vleft, vright, vpercent;
-            int nb_bars;
-            int px;
-
-            min = ctrl->info.minvalue;
-            max = ctrl->info.maxvalue;
-
-            val.dev = cur_mixer->info.dev;
-            val.ctrl = c;
-            val.timestamp = ctrl->info.timestamp;
-            val.value = -1;
-            if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
-                /* TODO Add a proper way to report errors */
-                mvprintw(0, 0, "cannot read control: %s",
-                         strerror(errno));
-                continue;
-            }
-
-            if (ext->type == MIXT_STEREOSLIDER) {
-                vleft = val.value & 0xff;
-                vright = (val.value >> 8) & 0xffff;
-            } else if (ext->type == MIXT_STEREOSLIDER16) {
-                vleft = val.value & 0xffff;
-                vright = (val.value >> 16) & 0xffff;
-            }
-
-            vpercent = min + (vleft * 100) / (max - min);
-
-            nb_bars = (vpercent * gauge_width) / 100;
-
-            mvprintw(py, 1, "%-*s", label_padding, ext->id);
-
-            px = 1 + label_padding + 2;
-            for (int g = 0; g < nb_bars; g++) {
-                mvaddch(py, px, '|');
-                px++;
-            }
-            px += gauge_width - nb_bars;
-
-            px += 2;
-            mvprintw(py, px, "%3d%%", vpercent);
-
+        ret = draw_control(&cur_mixer->controls[c], py, 0);
+        if (ret == 1)
             py++;
-        }
     }
 
     refresh();
