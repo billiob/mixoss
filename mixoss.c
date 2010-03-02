@@ -92,6 +92,13 @@ load_mixers() {
             return -1;
         }
 
+        if (!mixer->info.enabled) {
+            /* e.g. disconnected USB device */
+            fprintf(stderr, "found a disabled device: '%s'",
+                    mixer->info.name);
+            continue;
+        }
+
         for (int e = 0; e < mixer->nb_controls; e++) {
             struct control *ctrl = &mixers->controls[e];
 
