@@ -96,7 +96,7 @@ load_mixers() {
 
         if (!mixer->info.enabled) {
             /* e.g. disconnected USB device */
-            fprintf(stderr, "found a disabled device: '%s'",
+            fprintf(stderr, "found a disabled device: '%s'\n",
                     mixer->info.name);
             continue;
         }
