@@ -57,6 +57,8 @@ static void free_mixers();
 
 static int init_ui();
 static void free_ui();
+static void set_ui_error(const char *, ...);
+static int draw_control(struct control *, int, int);
 static void draw_ui();
 
 static int
@@ -146,6 +148,28 @@ free_ui() {
     endwin();
 }
 
+static void set_ui_error(const char *fmt, ...) {
+    int width, height;
+    char buf[1024];
+    va_list ap;
+
+    width  = getmaxx(stdscr);
+    height = getmaxy(stdscr);
+
+    move(height - 1, 0);
+    clrtoeol();
+
+    if (fmt) {
+        va_start(ap, fmt);
+        vsnprintf(buf, 1024, fmt, ap);
+        va_end(ap);
+
+        mvaddstr(height - 1, (width - strlen(buf)) / 2, buf);
+    }
+
+    refresh();
+}
+
 static int
 draw_control(struct control *ctrl, int py, int px) {
     struct oss_mixext *ext = &ctrl->info;
@@ -166,9 +190,8 @@ draw_control(struct control *ctrl, int py, int px) {
         val.timestamp = ctrl->info.timestamp;
         val.value = -1;
         if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
-            /* TODO Add a proper way to report errors */
-            mvprintw(0, 0, "cannot read control: %s",
-                    strerror(errno));
+            set_ui_error("cannot read control %s: %s",
+                         ctrl->info.id, strerror(errno));
             return -1;
         }
 
