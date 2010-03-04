@@ -32,6 +32,7 @@
 
 struct control {
     struct oss_mixext info;
+    int is_vmix;
 };
 
 struct mixer {
@@ -50,7 +51,7 @@ static struct mixer *cur_mixer;
 
 static const char *title = "mixoss";
 static int label_padding = 12;
-static int gauge_width = 25;
+static int gauge_width = 20;
 
 static int load_mixers();
 static void free_mixers();
@@ -113,6 +114,9 @@ load_mixers() {
                 free_mixers();
                 break;
             }
+
+            if (strstr(ctrl->info.extname, "vmix") == ctrl->info.extname)
+                ctrl->is_vmix = 1;
         }
     }
 
@@ -206,17 +210,17 @@ draw_control(struct control *ctrl, int py, int px) {
         vpercent = min + (vleft * 100) / (max - min);
         nb_bars = (vpercent * gauge_width) / 100;
 
-        x = px + 1;
-        mvprintw(py, 1, "%.*s", label_padding, ext->id);
+        x = px;
+        mvprintw(py, x, "%.*s", label_padding, ext->id);
 
-        x += label_padding + 2;
+        x += label_padding + 1;
         for (int g = 0; g < nb_bars; g++) {
             mvaddch(py, x, '|');
             x++;
         }
         x += gauge_width - nb_bars;
 
-        x += 2;
+        x++;
         mvprintw(py, x, "%3d%%", vpercent);
     } else {
         return 0;
@@ -228,23 +232,40 @@ draw_control(struct control *ctrl, int py, int px) {
 static void
 draw_ui() {
     int width, height;
-    int py;
+    int py_left, py_right;
+    int y_max;
 
     width  = getmaxx(stdscr);
     height = getmaxy(stdscr);
 
     clear();
 
-    mvaddstr(0, (width - strlen(title)) / 2, title);
+    mvaddstr(0, (80 - strlen(title)) / 2, title);
 
-    py = 3;
+    py_left = 2;
+    py_right = 2;
+
     for (int c = 0; c < cur_mixer->nb_controls; c++) {
+        struct control *ctrl = &cur_mixer->controls[c];
+        int *py, px;
         int ret;
 
-        ret = draw_control(&cur_mixer->controls[c], py, 0);
+        if (ctrl->is_vmix) {
+            py = &py_right;
+            px = 1 + label_padding + 2 + gauge_width + 1 + 6;
+        } else {
+            py = &py_left;
+            px = 0;
+        }
+
+        ret = draw_control(ctrl, *py, px);
         if (ret == 1)
-            py++;
+            (*py)++;
     }
+
+    y_max = py_left > py_right ? py_left : py_right;
+    for (int y = 2; y < y_max; y++)
+        mvaddch(y, 40, ACS_VLINE);
 
     refresh();
 }
