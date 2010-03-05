@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -52,7 +53,9 @@ static struct mixer *cur_mixer;
 static const char *title = "mixoss";
 static int label_padding = 12;
 static int gauge_width = 20;
+static int poll_interval = 250; /* ms */
 
+static int get_mixer_info(struct oss_mixerinfo *);
 static int load_mixers();
 static void free_mixers();
 
@@ -61,6 +64,17 @@ static void free_ui();
 static void set_ui_error(const char *, ...);
 static int draw_control(struct control *, int, int);
 static void draw_ui();
+
+static int get_mixer_info(struct oss_mixerinfo *info)
+{
+    errno = 0;
+    if (ioctl(mixer_fd, SNDCTL_MIXERINFO, info) == -1) {
+        set_ui_error("cannot get mixer info: %s", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
 
 static int
 load_mixers() {
@@ -272,6 +286,7 @@ draw_ui() {
 
 int
 main(int argc, char **argv) {
+    int modify_counter;
     int stop;
     int opt;
 
@@ -303,16 +318,38 @@ main(int argc, char **argv) {
 
     draw_ui();
 
+    modify_counter = -1;
+
     stop = 0;
     while (!stop) {
-        int c;
+        fd_set readfds;
+        struct timeval stimeout;
 
-        c = getch();
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
 
-        switch (c) {
-            case 'q':
-                stop = 1;
-                break;
+        stimeout.tv_sec = poll_interval / 1000;
+        stimeout.tv_usec = (poll_interval % 1000) * 1000;
+
+        if (select(1, &readfds, NULL, NULL, &stimeout) < 0) {
+            set_ui_error("select() failed: %s", strerror(errno));
+        }
+
+        if (get_mixer_info(&cur_mixer->info) == 0) {
+            if (cur_mixer->info.modify_counter != modify_counter) {
+                modify_counter = cur_mixer->info.modify_counter;
+                draw_ui();
+            }
+        }
+
+        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            int c;
+
+            switch (c = getch()) {
+                case 'q':
+                    stop = 1;
+                    break;
+            }
         }
     }
 
