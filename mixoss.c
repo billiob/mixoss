@@ -34,6 +34,8 @@
 struct control {
     struct oss_mixext info;
     int is_vmix;
+
+    struct control *ui_next;
 };
 
 struct mixer {
@@ -54,8 +56,11 @@ static const char *title = "mixoss";
 static int label_padding = 12;
 static int gauge_width = 20;
 static int poll_interval = 250; /* ms */
+static struct control *ui_dev_controls;
+static struct control *ui_vmix_controls;
 
 static int get_mixer_info(struct oss_mixerinfo *);
+static void reverse_mixer_list(struct control **);
 static int load_mixers();
 static void free_mixers();
 
@@ -74,6 +79,22 @@ static int get_mixer_info(struct oss_mixerinfo *info)
     }
 
     return 0;
+}
+
+static void reverse_mixer_list(struct control **plist) {
+    struct control *curr, *next, *res;
+
+    curr = *plist;
+    res = NULL;
+
+    while (curr) {
+        next = curr->ui_next;
+        curr->ui_next = res;
+        res = curr;
+        curr = next;
+    }
+
+    *plist = res;
 }
 
 static int
@@ -131,8 +152,22 @@ load_mixers() {
 
             if (strstr(ctrl->info.extname, "vmix") == ctrl->info.extname)
                 ctrl->is_vmix = 1;
+
+            if (ctrl->info.type == MIXT_STEREOSLIDER
+             || ctrl->info.type == MIXT_STEREOSLIDER16) {
+                if (ctrl->is_vmix) {
+                    ctrl->ui_next = ui_vmix_controls;
+                    ui_vmix_controls = ctrl;
+                } else {
+                    ctrl->ui_next = ui_dev_controls;
+                    ui_dev_controls = ctrl;
+                }
+            }
         }
     }
+
+    reverse_mixer_list(&ui_dev_controls);
+    reverse_mixer_list(&ui_vmix_controls);
 
     return 0;
 }
@@ -193,60 +228,57 @@ draw_control(struct control *ctrl, int py, int px) {
     struct oss_mixext *ext = &ctrl->info;
     struct oss_mixer_value val;
 
-    if (ext->type == MIXT_STEREOSLIDER
-     || ext->type == MIXT_STEREOSLIDER16) {
-        int min, max;
-        int vleft, vright, vpercent;
-        int nb_bars;
-        int x;
+    int min, max;
+    int vleft, vright, vpercent;
+    int nb_bars;
+    int x;
 
-        min = ctrl->info.minvalue;
-        max = ctrl->info.maxvalue;
+    min = ctrl->info.minvalue;
+    max = ctrl->info.maxvalue;
 
-        val.dev = cur_mixer->info.dev;
-        val.ctrl = ctrl->info.ctrl;
-        val.timestamp = ctrl->info.timestamp;
-        val.value = -1;
-        if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
-            set_ui_error("cannot read control %s: %s",
-                         ctrl->info.id, strerror(errno));
-            return -1;
-        }
-
-        if (ext->type == MIXT_STEREOSLIDER) {
-            vleft = val.value & 0xff;
-            vright = (val.value >> 8) & 0xffff;
-        } else if (ext->type == MIXT_STEREOSLIDER16) {
-            vleft = val.value & 0xffff;
-            vright = (val.value >> 16) & 0xffff;
-        }
-
-        vpercent = min + (vleft * 100) / (max - min);
-        nb_bars = (vpercent * gauge_width) / 100;
-
-        x = px;
-        mvprintw(py, x, "%.*s", label_padding, ext->id);
-
-        x += label_padding + 1;
-        for (int g = 0; g < nb_bars; g++) {
-            mvaddch(py, x, '|');
-            x++;
-        }
-        x += gauge_width - nb_bars;
-
-        x++;
-        mvprintw(py, x, "%3d%%", vpercent);
-    } else {
-        return 0;
+    val.dev = cur_mixer->info.dev;
+    val.ctrl = ctrl->info.ctrl;
+    val.timestamp = ctrl->info.timestamp;
+    val.value = -1;
+    if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
+        set_ui_error("cannot read control %s: %s",
+                     ctrl->info.id, strerror(errno));
+        return -1;
     }
 
-    return 1;
+    if (ext->type == MIXT_STEREOSLIDER) {
+        vleft = val.value & 0xff;
+        vright = (val.value >> 8) & 0xffff;
+    } else if (ext->type == MIXT_STEREOSLIDER16) {
+        vleft = val.value & 0xffff;
+        vright = (val.value >> 16) & 0xffff;
+    }
+
+    vpercent = min + (vleft * 100) / (max - min);
+    nb_bars = (vpercent * gauge_width) / 100;
+
+    x = px;
+    mvprintw(py, x, "%.*s", label_padding, ext->id);
+
+    x += label_padding + 1;
+    for (int g = 0; g < nb_bars; g++) {
+        mvaddch(py, x, '|');
+        x++;
+    }
+    x += gauge_width - nb_bars;
+
+    x++;
+    mvprintw(py, x, "%3d%%", vpercent);
+
+    return 0;
 }
 
 static void
 draw_ui() {
+    struct control *ctrl;
     int width, height;
     int py_left, py_right;
+    int px;
     int y_max;
 
     width  = getmaxx(stdscr);
@@ -257,24 +289,19 @@ draw_ui() {
     mvaddstr(0, (80 - strlen(title)) / 2, title);
 
     py_left = 2;
+    for (ctrl = ui_dev_controls; ctrl; ctrl = ctrl->ui_next) {
+        px = 0;
+
+        if (draw_control(ctrl, py_left, px) == 0)
+            py_left++;
+    }
+
     py_right = 2;
+    for (ctrl = ui_vmix_controls; ctrl; ctrl = ctrl->ui_next) {
+        px = 1 + label_padding + 2 + gauge_width + 1 + 6;
 
-    for (int c = 0; c < cur_mixer->nb_controls; c++) {
-        struct control *ctrl = &cur_mixer->controls[c];
-        int *py, px;
-        int ret;
-
-        if (ctrl->is_vmix) {
-            py = &py_right;
-            px = 1 + label_padding + 2 + gauge_width + 1 + 6;
-        } else {
-            py = &py_left;
-            px = 0;
-        }
-
-        ret = draw_control(ctrl, *py, px);
-        if (ret == 1)
-            (*py)++;
+        if (draw_control(ctrl, py_right, px) == 0)
+            py_right++;
     }
 
     y_max = py_left > py_right ? py_left : py_right;
