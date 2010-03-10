@@ -43,6 +43,9 @@ struct mixer {
 
     struct control *controls;
     int nb_controls;
+
+    struct control *ui_dev_controls;
+    struct control *ui_vmix_controls;
 };
 
 static const char *mixer_dev = "/dev/mixer";
@@ -56,8 +59,6 @@ static const char *title = "mixoss";
 static int label_padding = 12;
 static int gauge_width = 20;
 static int poll_interval = 250; /* ms */
-static struct control *ui_dev_controls;
-static struct control *ui_vmix_controls;
 
 static int get_mixer_info(struct oss_mixerinfo *);
 static void reverse_control_list(struct control **);
@@ -157,18 +158,18 @@ load_mixers() {
             if (ctrl->info.type == MIXT_STEREOSLIDER
              || ctrl->info.type == MIXT_STEREOSLIDER16) {
                 if (ctrl->is_vmix) {
-                    ctrl->ui_next = ui_vmix_controls;
-                    ui_vmix_controls = ctrl;
+                    ctrl->ui_next = mixer->ui_vmix_controls;
+                    mixer->ui_vmix_controls = ctrl;
                 } else {
-                    ctrl->ui_next = ui_dev_controls;
-                    ui_dev_controls = ctrl;
+                    ctrl->ui_next = mixer->ui_dev_controls;
+                    mixer->ui_dev_controls = ctrl;
                 }
             }
         }
-    }
 
-    reverse_control_list(&ui_dev_controls);
-    reverse_control_list(&ui_vmix_controls);
+        reverse_control_list(&mixer->ui_dev_controls);
+        reverse_control_list(&mixer->ui_vmix_controls);
+    }
 
     return 0;
 }
@@ -290,7 +291,7 @@ draw_ui() {
     mvaddstr(0, (80 - strlen(title)) / 2, title);
 
     py_left = 2;
-    for (ctrl = ui_dev_controls; ctrl; ctrl = ctrl->ui_next) {
+    for (ctrl = cur_mixer->ui_dev_controls; ctrl; ctrl = ctrl->ui_next) {
         px = 0;
 
         if (draw_control(ctrl, py_left, px) == 0)
@@ -298,7 +299,7 @@ draw_ui() {
     }
 
     py_right = 2;
-    for (ctrl = ui_vmix_controls; ctrl; ctrl = ctrl->ui_next) {
+    for (ctrl = cur_mixer->ui_vmix_controls; ctrl; ctrl = ctrl->ui_next) {
         px = 1 + label_padding + 2 + gauge_width + 1 + 6;
 
         if (draw_control(ctrl, py_right, px) == 0)
