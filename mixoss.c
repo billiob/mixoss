@@ -60,7 +60,7 @@ static struct control *ui_dev_controls;
 static struct control *ui_vmix_controls;
 
 static int get_mixer_info(struct oss_mixerinfo *);
-static void reverse_mixer_list(struct control **);
+static void reverse_control_list(struct control **);
 static int load_mixers();
 static void free_mixers();
 
@@ -81,7 +81,7 @@ static int get_mixer_info(struct oss_mixerinfo *info)
     return 0;
 }
 
-static void reverse_mixer_list(struct control **plist) {
+static void reverse_control_list(struct control **plist) {
     struct control *curr, *next, *res;
 
     curr = *plist;
@@ -166,8 +166,8 @@ load_mixers() {
         }
     }
 
-    reverse_mixer_list(&ui_dev_controls);
-    reverse_mixer_list(&ui_vmix_controls);
+    reverse_control_list(&ui_dev_controls);
+    reverse_control_list(&ui_vmix_controls);
 
     return 0;
 }
