@@ -70,8 +70,8 @@ static void set_ui_error(const char *, ...);
 static int draw_control(struct control *, int, int);
 static void draw_ui();
 
-static int get_mixer_info(struct oss_mixerinfo *info)
-{
+static int
+get_mixer_info(struct oss_mixerinfo *info) {
     errno = 0;
     if (ioctl(mixer_fd, SNDCTL_MIXERINFO, info) == -1) {
         set_ui_error("cannot get mixer info: %s", strerror(errno));
@@ -81,7 +81,8 @@ static int get_mixer_info(struct oss_mixerinfo *info)
     return 0;
 }
 
-static void reverse_control_list(struct control **plist) {
+static void
+reverse_control_list(struct control **plist) {
     struct control *curr, *next, *res;
 
     curr = *plist;
