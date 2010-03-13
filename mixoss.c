@@ -35,6 +35,7 @@ struct control {
     struct oss_mixext info;
     int is_vmix;
 
+    struct control *ui_prev;
     struct control *ui_next;
 };
 
@@ -84,19 +85,17 @@ get_mixer_info(struct oss_mixerinfo *info) {
 
 static void
 reverse_control_list(struct control **plist) {
-    struct control *curr, *next, *res;
+    struct control *curr, *temp;
 
     curr = *plist;
-    res = NULL;
 
     while (curr) {
-        next = curr->ui_next;
-        curr->ui_next = res;
-        res = curr;
-        curr = next;
+        temp = curr->ui_next;
+        curr->ui_next = curr->ui_prev;
+        curr->ui_prev = temp;
+        *plist = curr;
+        curr = temp;
     }
-
-    *plist = res;
 }
 
 static int
@@ -158,9 +157,13 @@ load_mixers() {
             if (ctrl->info.type == MIXT_STEREOSLIDER
              || ctrl->info.type == MIXT_STEREOSLIDER16) {
                 if (ctrl->is_vmix) {
+                    if (mixer->ui_vmix_controls)
+                        mixer->ui_vmix_controls->ui_prev = ctrl;
                     ctrl->ui_next = mixer->ui_vmix_controls;
                     mixer->ui_vmix_controls = ctrl;
                 } else {
+                    if (mixer->ui_dev_controls)
+                        mixer->ui_dev_controls->ui_prev = ctrl;
                     ctrl->ui_next = mixer->ui_dev_controls;
                     mixer->ui_dev_controls = ctrl;
                 }
