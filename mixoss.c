@@ -427,6 +427,9 @@ main(int argc, char **argv) {
         stimeout.tv_usec = (poll_interval % 1000) * 1000;
 
         if (select(1, &readfds, NULL, NULL, &stimeout) < 0) {
+            if (errno == EINTR)
+                continue;
+
             set_ui_error("select() failed: %s", strerror(errno));
         }
 
