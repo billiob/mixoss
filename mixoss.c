@@ -34,6 +34,7 @@
 struct control {
     struct oss_mixext info;
     int is_vmix;
+    int needs_redraw;
 
     struct control *ui_prev;
     struct control *ui_next;
@@ -159,6 +160,8 @@ load_mixers() {
             if (strstr(ctrl->info.extname, "vmix") == ctrl->info.extname)
                 ctrl->is_vmix = 1;
 
+            ctrl->needs_redraw = 1;
+
             if (ctrl->info.type == MIXT_STEREOSLIDER
              || ctrl->info.type == MIXT_STEREOSLIDER16) {
                 if (ctrl->is_vmix) {
@@ -244,7 +247,10 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
     int min, max;
     int vleft, vright, vpercent;
     int nb_bars;
-    int x;
+    int x, g;
+
+    if (!ctrl->needs_redraw)
+        return 0;
 
     min = ctrl->info.minvalue;
     max = ctrl->info.maxvalue;
@@ -280,11 +286,14 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
         attroff(A_BOLD);
 
     x += label_padding + 1;
-    for (int g = 0; g < nb_bars; g++) {
+    for (g = 0; g < nb_bars; g++) {
         mvaddch(py, x, '|');
         x++;
     }
-    x += gauge_width - nb_bars;
+    for (; g < gauge_width; g++) {
+        mvaddch(py, x, ' ');
+        x++;
+    }
 
     if (selected)
         attron(A_BOLD);
@@ -295,6 +304,7 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
     if (selected)
         attroff(A_BOLD);
 
+    ctrl->needs_redraw = 0;
     return 0;
 }
 
@@ -309,8 +319,6 @@ draw_ui() {
 
     width  = getmaxx(stdscr);
     height = getmaxy(stdscr);
-
-    clear();
 
     mvaddstr(0, (80 - strlen(title)) / 2, title);
 
@@ -354,6 +362,9 @@ move_to_next_control() {
 
     if (next) {
         cur_mixer->ui_curr_control = next;
+
+        curr->needs_redraw = 1;
+        next->needs_redraw = 1;
         draw_ui();
     }
 }
@@ -375,6 +386,9 @@ move_to_previous_control() {
 
     if (prev) {
         cur_mixer->ui_curr_control = prev;
+
+        curr->needs_redraw = 1;
+        prev->needs_redraw = 1;
         draw_ui();
     }
 }
@@ -411,6 +425,7 @@ main(int argc, char **argv) {
         exit(1);
     }
 
+    clear();
     draw_ui();
 
     modify_counter = -1;
@@ -435,7 +450,13 @@ main(int argc, char **argv) {
 
         if (get_mixer_info(&cur_mixer->info) == 0) {
             if (cur_mixer->info.modify_counter != modify_counter) {
+                struct control *ctrl;
+                int c;
+
                 modify_counter = cur_mixer->info.modify_counter;
+
+                for (c = 0; c < cur_mixer->nb_controls; c++)
+                    cur_mixer->controls[c].needs_redraw = 1;
                 draw_ui();
             }
         }
