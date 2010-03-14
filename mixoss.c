@@ -47,6 +47,8 @@ struct mixer {
 
     struct control *ui_dev_controls;
     struct control *ui_vmix_controls;
+
+    struct control *ui_curr_control;
 };
 
 static const char *mixer_dev = "/dev/mixer";
@@ -69,8 +71,11 @@ static void free_mixers();
 static int init_ui();
 static void free_ui();
 static void set_ui_error(const char *, ...);
-static int draw_control(struct control *, int, int);
+static int draw_control(struct control *, int, int, int);
 static void draw_ui();
+
+static void move_to_next_control();
+static void move_to_previous_control();
 
 static int
 get_mixer_info(struct oss_mixerinfo *info) {
@@ -172,6 +177,8 @@ load_mixers() {
 
         reverse_control_list(&mixer->ui_dev_controls);
         reverse_control_list(&mixer->ui_vmix_controls);
+
+        mixer->ui_curr_control = mixer->ui_dev_controls;
     }
 
     return 0;
@@ -206,7 +213,8 @@ free_ui() {
     endwin();
 }
 
-static void set_ui_error(const char *fmt, ...) {
+static void
+set_ui_error(const char *fmt, ...) {
     int width, height;
     char buf[1024];
     va_list ap;
@@ -229,7 +237,7 @@ static void set_ui_error(const char *fmt, ...) {
 }
 
 static int
-draw_control(struct control *ctrl, int py, int px) {
+draw_control(struct control *ctrl, int py, int px, int selected) {
     struct oss_mixext *ext = &ctrl->info;
     struct oss_mixer_value val;
 
@@ -262,8 +270,14 @@ draw_control(struct control *ctrl, int py, int px) {
     vpercent = min + (vleft * 100) / (max - min);
     nb_bars = (vpercent * gauge_width) / 100;
 
+    if (selected)
+        attron(A_BOLD);
+
     x = px;
     mvprintw(py, x, "%.*s", label_padding, ext->id);
+
+    if (selected)
+        attroff(A_BOLD);
 
     x += label_padding + 1;
     for (int g = 0; g < nb_bars; g++) {
@@ -272,8 +286,14 @@ draw_control(struct control *ctrl, int py, int px) {
     }
     x += gauge_width - nb_bars;
 
+    if (selected)
+        attron(A_BOLD);
+
     x++;
     mvprintw(py, x, "%3d%%", vpercent);
+
+    if (selected)
+        attroff(A_BOLD);
 
     return 0;
 }
@@ -285,6 +305,7 @@ draw_ui() {
     int py_left, py_right;
     int px;
     int y_max;
+    int sel;
 
     width  = getmaxx(stdscr);
     height = getmaxy(stdscr);
@@ -297,7 +318,8 @@ draw_ui() {
     for (ctrl = cur_mixer->ui_dev_controls; ctrl; ctrl = ctrl->ui_next) {
         px = 0;
 
-        if (draw_control(ctrl, py_left, px) == 0)
+        sel = ctrl == cur_mixer->ui_curr_control;
+        if (draw_control(ctrl, py_left, px, sel) == 0)
             py_left++;
     }
 
@@ -305,7 +327,8 @@ draw_ui() {
     for (ctrl = cur_mixer->ui_vmix_controls; ctrl; ctrl = ctrl->ui_next) {
         px = 1 + label_padding + 2 + gauge_width + 1 + 6;
 
-        if (draw_control(ctrl, py_right, px) == 0)
+        sel = ctrl == cur_mixer->ui_curr_control;
+        if (draw_control(ctrl, py_right, px, sel) == 0)
             py_right++;
     }
 
@@ -314,6 +337,46 @@ draw_ui() {
         mvaddch(y, 40, ACS_VLINE);
 
     refresh();
+}
+
+static void
+move_to_next_control() {
+    struct control *curr, *next;
+
+    curr = cur_mixer->ui_curr_control;
+    next = NULL;
+
+    if (curr->ui_next) {
+        next = curr->ui_next;
+    } else if (!curr->is_vmix) {
+        next = cur_mixer->ui_vmix_controls;
+    }
+
+    if (next) {
+        cur_mixer->ui_curr_control = next;
+        draw_ui();
+    }
+}
+
+static void
+move_to_previous_control() {
+    struct control *curr, *prev;
+
+    curr = cur_mixer->ui_curr_control;
+    prev = NULL;
+
+    if (curr->ui_prev) {
+        prev = curr->ui_prev;
+    } else if (curr->is_vmix) {
+        prev = cur_mixer->ui_dev_controls;
+        while (prev->ui_next)
+            prev = prev->ui_next;
+    }
+
+    if (prev) {
+        cur_mixer->ui_curr_control = prev;
+        draw_ui();
+    }
 }
 
 int
@@ -378,8 +441,17 @@ main(int argc, char **argv) {
             int c;
 
             switch (c = getch()) {
+                /* Quit */
                 case 'q':
                     stop = 1;
+                    break;
+
+                case 'j':
+                    move_to_next_control();
+                    break;
+
+                case 'k':
+                    move_to_previous_control();
                     break;
             }
         }
