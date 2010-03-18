@@ -110,6 +110,11 @@ load_mixers() {
         perror("cannot get number of mixers");
         return -1;
     }
+    if (!nb_mixers) {
+        fflush(stdout);
+        fputs("no mixer found", stderr);
+        return -1;
+    }
 
     mixers = calloc(nb_mixers, sizeof(struct mixer));
     if (!mixers) {
