@@ -146,8 +146,6 @@ set_control_volume(struct control *ctrl, int volume) {
     vleft = min + (volume * (max - min)) / 100;
     vright = vleft;
 
-    set_ui_error("change to %d in %d-%d", volume, min, max);
-
     if (ext->type == MIXT_STEREOSLIDER) {
         volume = vleft | (vright << 8);
     } else if (ext->type == MIXT_STEREOSLIDER16) {
