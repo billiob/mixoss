@@ -34,6 +34,7 @@
 struct control {
     struct oss_mixext info;
     int is_vmix;
+    int vmix_dev;
     int needs_redraw;
 
     struct control *ui_prev;
@@ -242,7 +243,7 @@ load_mixers() {
                 break;
             }
 
-            if (strstr(ctrl->info.extname, "vmix") == ctrl->info.extname)
+            if (sscanf(ctrl->info.id, "@pcm%d", &ctrl->vmix_dev) == 1)
                 ctrl->is_vmix = 1;
 
             ctrl->needs_redraw = 1;
@@ -326,14 +327,28 @@ set_ui_error(const char *fmt, ...) {
 
 static int
 draw_control(struct control *ctrl, int py, int px, int selected) {
-    struct oss_mixext *ext = &ctrl->info;
+    struct oss_mixext *ext;
+    struct oss_audioinfo ainfo;
 
+    const char *label;
     int volume;
     int nb_bars;
     int x, g;
 
+    ext = &ctrl->info;
+
     if (!ctrl->needs_redraw)
         return 0;
+
+    label = ext->id;
+    if (ctrl->is_vmix) {
+        ainfo.dev = ctrl->vmix_dev;
+        if (ioctl(mixer_fd, SNDCTL_ENGINEINFO, &ainfo) < 0) {
+            set_ui_error("cannot get mixer label: %s", strerror(errno));
+        } else if (*ainfo.label) {
+            label = ainfo.label;
+        }
+    }
 
     volume = get_control_volume(ctrl);
     if (volume == -1)
@@ -345,7 +360,7 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
         attron(A_BOLD);
 
     x = px;
-    mvprintw(py, x, "%.*s", label_padding, ext->id);
+    mvprintw(py, x, "%- *s", label_padding, label);
 
     if (selected)
         attroff(A_BOLD);
@@ -537,18 +552,9 @@ main(int argc, char **argv) {
             set_ui_error("select() failed: %s", strerror(errno));
         }
 
-        if (get_mixer_info(&cur_mixer->info) == 0) {
-            if (cur_mixer->info.modify_counter != modify_counter) {
-                struct control *ctrl;
-                int c;
-
-                modify_counter = cur_mixer->info.modify_counter;
-
-                for (c = 0; c < cur_mixer->nb_controls; c++)
-                    cur_mixer->controls[c].needs_redraw = 1;
-                draw_ui();
-            }
-        }
+        for (int c = 0; c < cur_mixer->nb_controls; c++)
+            cur_mixer->controls[c].needs_redraw = 1;
+        draw_ui();
 
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
             int c;
