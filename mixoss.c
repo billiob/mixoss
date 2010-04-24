@@ -65,6 +65,8 @@ static int gauge_width = 20;
 static int poll_interval = 250; /* ms */
 
 static int get_mixer_info(struct oss_mixerinfo *);
+static int get_control_volume(struct control *);
+static int set_control_volume(struct control *, int);
 static void reverse_control_list(struct control **);
 static int load_mixers();
 static void free_mixers();
@@ -77,12 +79,90 @@ static void draw_ui();
 
 static void move_to_next_control();
 static void move_to_previous_control();
+static void modify_volume(int);
 
 static int
 get_mixer_info(struct oss_mixerinfo *info) {
     errno = 0;
     if (ioctl(mixer_fd, SNDCTL_MIXERINFO, info) == -1) {
         set_ui_error("cannot get mixer info: %s", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+get_control_volume(struct control *ctrl) {
+    struct oss_mixer_value val;
+    struct oss_mixext *ext;
+    int vleft, vright;
+    int min, max;
+
+    ext = &ctrl->info;
+
+    val.dev = cur_mixer->info.dev;
+    val.ctrl = ext->ctrl;
+    val.timestamp = ext->timestamp;
+    val.value = -1;
+
+    if (ioctl(mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
+        set_ui_error("cannot get volume of control %s: %s",
+                ctrl->info.id, strerror(errno));
+        return -1;
+    }
+
+    if (ext->type == MIXT_STEREOSLIDER) {
+        vleft = val.value & 0xff;
+        vright = (val.value >> 8) & 0xffff;
+    } else if (ext->type == MIXT_STEREOSLIDER16) {
+        vleft = val.value & 0xffff;
+        vright = (val.value >> 16) & 0xffff;
+    } else {
+        vleft = 0;
+        vright = 0;
+    }
+
+    min = ctrl->info.minvalue;
+    max = ctrl->info.maxvalue;
+
+    return min + (vleft * 100) / (max - min);
+}
+
+static int
+set_control_volume(struct control *ctrl, int volume) {
+    struct oss_mixext *ext;
+    struct oss_mixer_value val;
+    int vleft, vright;
+    int min, max;
+    int level;
+
+    ext = &ctrl->info;
+
+    min = ext->minvalue;
+    max = ext->maxvalue;
+
+    vleft = min + (volume * (max - min)) / 100;
+    vright = vleft;
+
+    set_ui_error("change to %d in %d-%d", volume, min, max);
+
+    if (ext->type == MIXT_STEREOSLIDER) {
+        volume = vleft | (vright << 8);
+    } else if (ext->type == MIXT_STEREOSLIDER16) {
+        volume = vleft | (vright << 16);
+    } else {
+        volume = 0;
+    }
+
+    val.dev = cur_mixer->info.dev;
+    val.ctrl = ext->ctrl;
+    val.timestamp = ext->timestamp;
+    val.value = volume;
+
+    if (ioctl(mixer_fd, SNDCTL_MIX_WRITE, &val) == -1) {
+        set_ui_error("cannot set volume of control %s: %s",
+                ctrl->info.id, strerror(errno));
         return -1;
     }
 
@@ -247,39 +327,19 @@ set_ui_error(const char *fmt, ...) {
 static int
 draw_control(struct control *ctrl, int py, int px, int selected) {
     struct oss_mixext *ext = &ctrl->info;
-    struct oss_mixer_value val;
 
-    int min, max;
-    int vleft, vright, vpercent;
+    int volume;
     int nb_bars;
     int x, g;
 
     if (!ctrl->needs_redraw)
         return 0;
 
-    min = ctrl->info.minvalue;
-    max = ctrl->info.maxvalue;
-
-    val.dev = cur_mixer->info.dev;
-    val.ctrl = ctrl->info.ctrl;
-    val.timestamp = ctrl->info.timestamp;
-    val.value = -1;
-    if (ioctl (mixer_fd, SNDCTL_MIX_READ, &val) == -1) {
-        set_ui_error("cannot read control %s: %s",
-                     ctrl->info.id, strerror(errno));
+    volume = get_control_volume(ctrl);
+    if (volume == -1)
         return -1;
-    }
 
-    if (ext->type == MIXT_STEREOSLIDER) {
-        vleft = val.value & 0xff;
-        vright = (val.value >> 8) & 0xffff;
-    } else if (ext->type == MIXT_STEREOSLIDER16) {
-        vleft = val.value & 0xffff;
-        vright = (val.value >> 16) & 0xffff;
-    }
-
-    vpercent = min + (vleft * 100) / (max - min);
-    nb_bars = (vpercent * gauge_width) / 100;
+    nb_bars = (volume * gauge_width) / 100;
 
     if (selected)
         attron(A_BOLD);
@@ -304,7 +364,7 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
         attron(A_BOLD);
 
     x++;
-    mvprintw(py, x, "%3d%%", vpercent);
+    mvprintw(py, x, "%3d%%", volume);
 
     if (selected)
         attroff(A_BOLD);
@@ -398,6 +458,30 @@ move_to_previous_control() {
     }
 }
 
+static void
+modify_volume(int sign) {
+    struct control *ctrl;
+    int volume;
+    int inc;
+
+    ctrl = cur_mixer->ui_curr_control;
+    inc = sign * (100 / gauge_width);
+
+    volume = get_control_volume(ctrl);
+    if (volume == -1)
+        return;
+
+    volume += inc;
+
+    if (volume < 0) {
+        volume = 0;
+    } else if (volume > 100) {
+        volume = 100;
+    }
+
+    set_control_volume(ctrl, volume);
+}
+
 int
 main(int argc, char **argv) {
     int modify_counter;
@@ -470,7 +554,6 @@ main(int argc, char **argv) {
             int c;
 
             switch (c = getch()) {
-                /* Quit */
                 case 'q':
                     stop = 1;
                     break;
@@ -481,6 +564,14 @@ main(int argc, char **argv) {
 
                 case 'k':
                     move_to_previous_control();
+                    break;
+
+                case 'h':
+                    modify_volume(-1);
+                    break;
+
+                case 'l':
+                    modify_volume(1);
                     break;
             }
         }
