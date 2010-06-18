@@ -595,9 +595,6 @@ main(int argc, char **argv) {
                     break;
 
                 case '0':
-                    set_volume(0);
-                    break;
-
                 case '1':
                 case '2':
                 case '3':
