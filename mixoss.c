@@ -81,6 +81,7 @@ static void draw_ui();
 static void move_to_next_control();
 static void move_to_previous_control();
 static void modify_volume(int);
+static void set_volume(int);
 
 static int
 get_mixer_info(struct oss_mixerinfo *info) {
@@ -495,6 +496,21 @@ modify_volume(int sign) {
     set_control_volume(ctrl, volume);
 }
 
+static void
+set_volume(int volume) {
+    struct control *ctrl;
+
+    ctrl = cur_mixer->ui_curr_control;
+
+    if (volume < 0) {
+        volume = 0;
+    } else if (volume > 100) {
+        volume = 100;
+    }
+
+    set_control_volume(ctrl, volume);
+}
+
 int
 main(int argc, char **argv) {
     int modify_counter;
@@ -576,6 +592,22 @@ main(int argc, char **argv) {
 
                 case 'l':
                     modify_volume(1);
+                    break;
+
+                case '0':
+                    set_volume(0);
+                    break;
+
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    set_volume((c - '0') * 10);
                     break;
             }
         }
