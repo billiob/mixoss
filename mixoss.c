@@ -359,7 +359,7 @@ draw_control(struct control *ctrl, int py, int px, int selected) {
         attron(A_BOLD);
 
     x = px;
-    mvprintw(py, x, "%- *s", label_padding, label);
+    mvprintw(py, x, "%- *.*s", label_padding, label_padding, label);
 
     if (selected)
         attroff(A_BOLD);
